@@ -72,23 +72,54 @@ belong in a terminal workflow. LazySSH fixes that.
 
 ## Install
 
-**From source (recommended):**
+### macOS — Homebrew
 
 ```bash
-go install github.com/igorivitskyy/lazyssh/cmd/lazyssh@latest
+brew tap Bestigor89/tap
+brew install lazyssh
 ```
 
-**Build manually:**
+### Linux — prebuilt packages
+
+Download `.deb` (Ubuntu/Debian) or `.rpm` (RHEL/Fedora) from the
+[releases page](https://github.com/Bestigor89/lazyssh/releases/latest):
 
 ```bash
-git clone https://github.com/igorivitskyy/lazyssh.git
+# Ubuntu / Debian
+sudo dpkg -i lazyssh_*_amd64.deb
+
+# RHEL / Fedora / CentOS
+sudo rpm -i lazyssh_*_x86_64.rpm
+```
+
+### Any OS — Go install
+
+```bash
+go install github.com/Bestigor89/lazyssh/cmd/lazyssh@latest
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/Bestigor89/lazyssh.git
 cd lazyssh
 make build     # → ./lazyssh
 make install   # → $GOPATH/bin/lazyssh
 ```
 
-**Prebuilt binaries:** planned for the first tagged release.
-Follow the [releases page](../../releases) or 👉 [leave a thumbs-up on this issue](../../issues) to signal demand.
+### Prebuilt binaries
+
+Download the archive for your platform from the
+[releases page](https://github.com/Bestigor89/lazyssh/releases/latest),
+extract and put `lazyssh` anywhere on your `$PATH`.
+
+| Platform | File |
+|---|---|
+| macOS Apple Silicon | `lazyssh_*_darwin_arm64.tar.gz` |
+| macOS Intel | `lazyssh_*_darwin_amd64.tar.gz` |
+| Linux x86-64 | `lazyssh_*_linux_amd64.tar.gz` |
+| Linux ARM64 | `lazyssh_*_linux_arm64.tar.gz` |
+| Windows | `lazyssh_*_windows_amd64.zip` |
 
 **Requirements at runtime:**
 
