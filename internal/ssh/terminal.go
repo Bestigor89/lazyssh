@@ -8,7 +8,7 @@ import (
 
 	"github.com/rivo/tview"
 
-	"github.com/igorivitskyy/lazyssh/internal/model"
+	"github.com/Bestigor89/lazyssh/internal/model"
 )
 
 // LaunchTerminal suspends the TUI, opens an interactive SSH session using the

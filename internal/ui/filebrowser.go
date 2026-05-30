@@ -12,8 +12,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/igorivitskyy/lazyssh/internal/model"
-	sshpkg "github.com/igorivitskyy/lazyssh/internal/ssh"
+	"github.com/Bestigor89/lazyssh/internal/model"
+	sshpkg "github.com/Bestigor89/lazyssh/internal/ssh"
 )
 
 const (

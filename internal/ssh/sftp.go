@@ -18,7 +18,7 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 	"github.com/pkg/sftp"
 
-	"github.com/igorivitskyy/lazyssh/internal/model"
+	"github.com/Bestigor89/lazyssh/internal/model"
 )
 
 // FileInfo describes a single entry in a directory listing.

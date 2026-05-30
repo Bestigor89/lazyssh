@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/igorivitskyy/lazyssh/internal/model"
+	"github.com/Bestigor89/lazyssh/internal/model"
 )
 
 // Path returns the path to the hosts configuration file.

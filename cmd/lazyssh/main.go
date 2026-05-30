@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/igorivitskyy/lazyssh/internal/config"
-	"github.com/igorivitskyy/lazyssh/internal/ui"
+	"github.com/Bestigor89/lazyssh/internal/config"
+	"github.com/Bestigor89/lazyssh/internal/ui"
 )
 
 // version is set at build time via -ldflags "-X main.version=x.y.z".
