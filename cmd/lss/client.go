@@ -94,13 +94,13 @@ func runClient(socketPath string) error {
 }
 
 func sendWinch(conn net.Conn) {
-	h, w, err := term.GetSize(int(os.Stdin.Fd()))
+	w, h, err := term.GetSize(int(os.Stdin.Fd())) // returns width, height
 	if err != nil {
 		return
 	}
 	payload := []byte{
-		byte(h >> 8), byte(h),
-		byte(w >> 8), byte(w),
+		byte(h >> 8), byte(h), // rows = height
+		byte(w >> 8), byte(w), // cols = width
 	}
 	_ = writeFrame(conn, fWinch, payload)
 }
