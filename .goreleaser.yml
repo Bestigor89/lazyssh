@@ -62,24 +62,10 @@ nfpms:
         dst: /usr/share/doc/lazyssh/LICENSE
 
 # ── Homebrew tap ─────────────────────────────────────────────────────────────
-# Requires:
-#   1. A repo: github.com/Bestigor89/homebrew-tap  (create it empty on GitHub)
-#   2. A secret in lazyssh repo settings:
-#      HOMEBREW_TAP_GITHUB_TOKEN = Personal Access Token with "repo" scope
-brews:
-  - name: lazyssh
-    repository:
-      owner: Bestigor89
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
-    homepage: https://github.com/Bestigor89/lazyssh
-    description: Keyboard-driven SSH manager and dual-pane SFTP file browser for the terminal
-    license: "PolyForm-Noncommercial-1.0.0"
-    test: |
-      system "#{bin}/lazyssh --version"
-    install: |
-      bin.install "lazyssh"
+# Formula is managed manually in github.com/Bestigor89/homebrew-tap
+# and updated by .github/workflows/release.yml after each release.
+# GoReleaser auto-generation is disabled because it produces incompatible
+# define_method syntax on Homebrew 5.x.
 
 # ── Checksums ─────────────────────────────────────────────────────────────────
 checksum:
