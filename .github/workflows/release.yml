@@ -35,6 +35,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Create Homebrew bottle tarballs from the GoReleaser archives and upload
+      # them to the same release. Must run after GoReleaser so the archives exist.
+      - name: Create and upload Homebrew bottles
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          chmod +x .github/scripts/create_bottles.sh
+          .github/scripts/create_bottles.sh
+
       - name: Update Homebrew formula
         env:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
