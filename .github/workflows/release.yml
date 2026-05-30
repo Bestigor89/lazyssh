@@ -32,6 +32,11 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Add AUR to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
