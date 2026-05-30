@@ -34,3 +34,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: set this secret to enable Homebrew tap auto-update.
+          # Create a Personal Access Token with "repo" scope and add it in:
+          # GitHub repo → Settings → Secrets → HOMEBREW_TAP_GITHUB_TOKEN
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

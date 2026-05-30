@@ -6,6 +6,7 @@ before:
   hooks:
     - go mod tidy
 
+# ── Binaries ──────────────────────────────────────────────────────────────────
 builds:
   - id: lazyssh
     main: ./cmd/lazyssh
@@ -25,6 +26,7 @@ builds:
       - goos: windows
         goarch: arm64
 
+# ── Archives (tar.gz / zip) ───────────────────────────────────────────────────
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -36,9 +38,54 @@ archives:
       - LICENSE
       - COMMERCIAL-LICENSE.md
 
+# ── Linux packages (.deb / .rpm / .apk) ──────────────────────────────────────
+nfpms:
+  - id: packages
+    package_name: lazyssh
+    vendor: Igor Dudnyk
+    homepage: https://github.com/Bestigor89/lazyssh
+    maintainer: Igor Dudnyk <igordudnek@gmail.com>
+    description: |
+      Keyboard-driven SSH connection manager and dual-pane SFTP file browser
+      for the terminal. Organize hosts in nested folders, launch SSH sessions
+      or browse remote files — all without leaving your terminal.
+    license: PolyForm Noncommercial 1.0.0
+    formats:
+      - deb     # Ubuntu, Debian
+      - rpm     # RHEL, Fedora, CentOS
+      - apk     # Alpine Linux
+    bindir: /usr/bin
+    contents:
+      - src: ./README.md
+        dst: /usr/share/doc/lazyssh/README.md
+      - src: ./LICENSE
+        dst: /usr/share/doc/lazyssh/LICENSE
+
+# ── Homebrew tap ─────────────────────────────────────────────────────────────
+# Requires:
+#   1. A repo: github.com/Bestigor89/homebrew-tap  (create it empty on GitHub)
+#   2. A secret in lazyssh repo settings:
+#      HOMEBREW_TAP_GITHUB_TOKEN = Personal Access Token with "repo" scope
+brews:
+  - name: lazyssh
+    repository:
+      owner: Bestigor89
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/Bestigor89/lazyssh
+    description: Keyboard-driven SSH manager and dual-pane SFTP file browser for the terminal
+    license: "PolyForm-Noncommercial-1.0.0"
+    test: |
+      system "#{bin}/lazyssh --version"
+    install: |
+      bin.install "lazyssh"
+
+# ── Checksums ─────────────────────────────────────────────────────────────────
 checksum:
   name_template: "checksums.txt"
 
+# ── Changelog ─────────────────────────────────────────────────────────────────
 changelog:
   sort: asc
   use: github
