@@ -7,9 +7,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/igorivitskyy/sshmanager/internal/config"
-	"github.com/igorivitskyy/sshmanager/internal/model"
-	sshpkg "github.com/igorivitskyy/sshmanager/internal/ssh"
+	"github.com/igorivitskyy/lazyssh/internal/config"
+	"github.com/igorivitskyy/lazyssh/internal/model"
+	sshpkg "github.com/igorivitskyy/lazyssh/internal/ssh"
 )
 
 // hostList is the main screen: a tree of saved hosts grouped by folder.
@@ -30,7 +30,7 @@ func newHostList(a *App) *hostList {
 	title := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText("[black::b] SSH Manager [-::-]  [darkgray]" + Version + "[-]")
+		SetText("[black::b] LazySSH [-::-]  [darkgray]" + Version + "[-]")
 	title.SetBackgroundColor(tcell.ColorDodgerBlue)
 
 	// ── Tree ───────────────────────────────────────────────────────────────

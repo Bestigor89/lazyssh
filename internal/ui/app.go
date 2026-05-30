@@ -8,9 +8,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/igorivitskyy/sshmanager/internal/config"
-	"github.com/igorivitskyy/sshmanager/internal/model"
-	sshpkg "github.com/igorivitskyy/sshmanager/internal/ssh"
+	"github.com/igorivitskyy/lazyssh/internal/config"
+	"github.com/igorivitskyy/lazyssh/internal/model"
+	sshpkg "github.com/igorivitskyy/lazyssh/internal/ssh"
 )
 
 // App is the top-level application object.

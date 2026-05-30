@@ -1,4 +1,4 @@
-module github.com/igorivitskyy/sshmanager
+module github.com/igorivitskyy/lazyssh
 
 go 1.25.5
 

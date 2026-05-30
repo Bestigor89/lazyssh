@@ -1,11 +1,11 @@
-BINARY  := sshmanager
-CMD     := ./cmd/sshmanager
+BINARY  := lazyssh
+CMD     := ./cmd/lazyssh
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
 .DEFAULT_GOAL := help
 
-## build: Compile the binary (output: ./sshmanager)
+## build: Compile the binary (output: ./lazyssh)
 .PHONY: build
 build:
 	go build $(LDFLAGS) -o $(BINARY) $(CMD)

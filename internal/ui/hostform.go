@@ -8,8 +8,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/igorivitskyy/sshmanager/internal/config"
-	"github.com/igorivitskyy/sshmanager/internal/model"
+	"github.com/igorivitskyy/lazyssh/internal/config"
+	"github.com/igorivitskyy/lazyssh/internal/model"
 )
 
 // hostForm is the add/edit host page.

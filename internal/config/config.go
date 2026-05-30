@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/igorivitskyy/sshmanager/internal/model"
+	"github.com/igorivitskyy/lazyssh/internal/model"
 )
 
 // Path returns the path to the hosts configuration file.
@@ -17,7 +17,7 @@ func Path() string {
 	if dir == "" {
 		dir = filepath.Join(os.Getenv("HOME"), ".config")
 	}
-	return filepath.Join(dir, "sshmanager", "hosts.yaml")
+	return filepath.Join(dir, "lazyssh", "hosts.yaml")
 }
 
 // Load reads the hosts file and returns a Store.

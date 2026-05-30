@@ -36,11 +36,11 @@ The commercial license does **not** grant the right to remove copyright notices 
 
 Contact the author to discuss pricing and terms:
 
-**Igor Ivitskyy**
+**Igor Dudnyk**
 📧 [igordudnek@gmail.com](mailto:igordudnek@gmail.com)
 
 Please include a short description of your intended use case. Licenses are issued per organization.
 
 ---
 
-*Copyright (c) 2026 Igor Ivitskyy. All rights reserved.*
+*Copyright (c) 2026 Igor Dudnyk. All rights reserved.*

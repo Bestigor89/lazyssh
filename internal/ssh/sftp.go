@@ -18,7 +18,7 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 	"github.com/pkg/sftp"
 
-	"github.com/igorivitskyy/sshmanager/internal/model"
+	"github.com/igorivitskyy/lazyssh/internal/model"
 )
 
 // FileInfo describes a single entry in a directory listing.
@@ -379,7 +379,7 @@ func loadTolerantKnownHosts(path string) (gossh.HostKeyCallback, error) {
 	defer f.Close()
 
 	// Write only the valid lines to a temp file that knownhosts.New can read.
-	tmp, err := os.CreateTemp("", "sshmanager-kh-*")
+	tmp, err := os.CreateTemp("", "lazyssh-kh-*")
 	if err != nil {
 		return nil, err
 	}

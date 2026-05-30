@@ -1,6 +1,6 @@
 # Build output
-/sshmanager
-/sshmanager.exe
+/lazyssh
+/lazyssh.exe
 dist/
 
 # Test artifacts

@@ -12,8 +12,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/igorivitskyy/sshmanager/internal/model"
-	sshpkg "github.com/igorivitskyy/sshmanager/internal/ssh"
+	"github.com/igorivitskyy/lazyssh/internal/model"
+	sshpkg "github.com/igorivitskyy/lazyssh/internal/ssh"
 )
 
 const (
@@ -850,7 +850,7 @@ func (fb *fileBrowser) editLocalFile(name string) {
 func (fb *fileBrowser) editRemoteFile(name string) {
 	remotePath := strings.TrimRight(fb.remoteDir, "/") + "/" + name
 
-	tmp, err := os.CreateTemp("", "sshmanager-edit-*")
+	tmp, err := os.CreateTemp("", "lazyssh-edit-*")
 	if err != nil {
 		fb.app.showError("Temp file: " + err.Error())
 		return
