@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
 	"golang.org/x/term"
@@ -14,6 +13,7 @@ import (
 const detachKey = 0x1c // Ctrl-\
 
 // runClient connects to a session socket and runs the interactive loop.
+// Returns when the server closes the connection or the user detaches.
 func runClient(socketPath string) error {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -28,7 +28,6 @@ func runClient(socketPath string) error {
 	}
 	defer term.Restore(fd, oldState)
 
-	// Send initial window size — triggers a forced redraw on the daemon side.
 	sendWinch(conn)
 
 	// Forward SIGWINCH (terminal resize) to the remote PTY.
@@ -41,9 +40,8 @@ func runClient(socketPath string) error {
 		}
 	}()
 
-	// Close the connection cleanly on SIGHUP / SIGTERM so the daemon
-	// detects the disconnect immediately instead of waiting indefinitely.
-	// SIGHUP is sent by sshd when the SSH session ends (window close, network drop).
+	// Close the connection on SIGHUP / SIGTERM so the daemon detects the
+	// disconnect immediately (e.g. when the SSH session is killed).
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGTERM)
 	defer signal.Stop(sigs)
@@ -52,13 +50,14 @@ func runClient(socketPath string) error {
 		conn.Close()
 	}()
 
-	var wg sync.WaitGroup
 	var clientErr error
 
+	// serverClosed is closed when the server side of the conn is done.
+	serverClosed := make(chan struct{})
+
 	// server → local stdout
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer close(serverClosed)
 		for {
 			typ, payload, err := readFrame(conn)
 			if err != nil {
@@ -66,21 +65,24 @@ func runClient(socketPath string) error {
 			}
 			switch typ {
 			case fData:
-				_, _ = os.Stdout.Write(payload)
+				if len(payload) > 0 {
+					_, _ = os.Stdout.Write(payload)
+				}
 			case fError:
-				// Bug 2 fix: daemon rejected us (session busy). Print the
-				// message after restoring the terminal so it renders correctly.
+				// Daemon rejected connection (session busy, etc.).
 				clientErr = fmt.Errorf("%s", payload)
-				conn.Close()
 				return
 			}
 		}
 	}()
 
+	// detached is closed when the user presses the detach key.
+	detached := make(chan struct{})
+
 	// local stdin → server (intercept detach key)
-	wg.Add(1)
+	// This goroutine may outlive runClient (blocked in os.Stdin.Read).
+	// That is intentional: the process exits shortly after, taking it with it.
 	go func() {
-		defer wg.Done()
 		buf := make([]byte, 1024)
 		for {
 			n, err := os.Stdin.Read(buf)
@@ -90,7 +92,7 @@ func runClient(socketPath string) error {
 			for i := 0; i < n; i++ {
 				if buf[i] == detachKey {
 					_ = writeFrame(conn, fDetach, nil)
-					conn.Close()
+					close(detached)
 					return
 				}
 			}
@@ -100,12 +102,20 @@ func runClient(socketPath string) error {
 		}
 	}()
 
-	wg.Wait()
+	// Return as soon as the server closes OR the user detaches.
+	// We do NOT wait for the stdin goroutine — it may be blocked in
+	// os.Stdin.Read and would hang forever after the daemon dies.
+	// The process exits shortly after runClient returns, cleaning it up.
+	select {
+	case <-serverClosed:
+	case <-detached:
+	}
+
 	return clientErr
 }
 
 func sendWinch(conn net.Conn) {
-	w, h, err := term.GetSize(int(os.Stdin.Fd())) // returns width, height
+	w, h, err := term.GetSize(int(os.Stdin.Fd())) // GetSize returns width, height
 	if err != nil {
 		return
 	}
