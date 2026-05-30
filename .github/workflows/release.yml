@@ -39,6 +39,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
 
       # Create Homebrew bottle tarballs from the GoReleaser archives and upload
       # them to the same release. Must run after GoReleaser so the archives exist.
