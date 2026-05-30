@@ -13,13 +13,13 @@ file browser with one keystroke — all without touching your mouse.
 
 ---
 
-<!-- Add a screenshot or GIF once you have one:
+![LazySSH — host list with nested folders](img/home.png)
 
-![LazySSH screenshot](docs/screenshot.png)
-
-A 1200×700 screenshot or a ~30 s GIF makes the biggest impact.
-Drop the file into docs/ and uncomment this block.
--->
+<p align="center">
+  <img src="img/addhost.png" width="45%" alt="Add Host form" />
+  &nbsp;&nbsp;
+  <img src="img/serverpanel.png" width="50%" alt="Dual-pane SFTP browser" />
+</p>
 
 ---
 
