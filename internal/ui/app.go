@@ -332,11 +332,10 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 	arch, err := sshpkg.DetectArch(client)
 	if err != nil {
 		// Non-Linux or unsupported arch — fall back to a plain shell.
-		// QueueUpdateDraw so LaunchTerminal runs on the event-loop goroutine.
 		client.Close()
 		a.tApp.QueueUpdateDraw(func() {
 			a.removeModal()
-			_ = sshpkg.LaunchTerminal(a.tApp, host, "")
+			go func() { _ = sshpkg.LaunchTerminal(a.tApp, host, "") }()
 		})
 		return
 	}
@@ -360,7 +359,7 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 				a.removeModal()
 				a.showConfirm(
 					"Session helper not available.\nOpen a plain shell instead?",
-					func() { _ = sshpkg.LaunchTerminal(a.tApp, host, "") },
+					func() { go func() { _ = sshpkg.LaunchTerminal(a.tApp, host, "") }() },
 				)
 			})
 			return
@@ -438,13 +437,16 @@ func (a *App) showSessionSelector(host *model.Host, home string, sessions []sshp
 
 	launch := func(remoteCmd string) {
 		closePage()
-		// Call directly on the tview event-loop goroutine — that is what
-		// tview.Application.Suspend is designed for. Spawning a goroutine
-		// creates a race with the event loop that causes the UI to freeze
-		// after Resume (keyboard input ignored, screen not updated).
-		if err := sshpkg.LaunchTerminal(a.tApp, host, remoteCmd); err != nil {
-			a.showError(err.Error())
-		}
+		// LaunchTerminal must run in a goroutine. Calling it directly on the
+		// event-loop goroutine causes tview to exit the Run() loop after the
+		// session ends (tcell queues EventInterrupt which Run() interprets as
+		// a stop signal). With a goroutine, the event loop handles the
+		// Suspend/Resume cycle correctly and stays alive after the session.
+		go func() {
+			if err := sshpkg.LaunchTerminal(a.tApp, host, remoteCmd); err != nil {
+				a.tApp.QueueUpdateDraw(func() { a.showError(err.Error()) })
+			}
+		}()
 	}
 
 	list.AddItem("[+] New session", "", 0, func() {
