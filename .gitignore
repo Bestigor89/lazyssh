@@ -1,0 +1,25 @@
+# Build output
+/sshmanager
+/sshmanager.exe
+dist/
+
+# Test artifacts
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor dirs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go workspace (if using)
+go.work
+go.work.sum
