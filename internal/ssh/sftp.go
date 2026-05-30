@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/sftp"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
-	"github.com/pkg/sftp"
 
 	"github.com/Bestigor89/lazyssh/internal/model"
 )

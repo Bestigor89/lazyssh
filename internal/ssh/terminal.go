@@ -35,6 +35,12 @@ func LaunchTerminal(tApp *tview.Application, host *model.Host, remoteCmd string)
 		}
 	})
 
+	// After Resume tcell re-initialises the terminal but does not repaint on its
+	// own — it waits for the next input event. Sync() invalidates the internal
+	// cell buffer and forces an immediate full redraw so the TUI appears without
+	// the user having to press Enter.
+	tApp.Sync()
+
 	return runErr
 }
 

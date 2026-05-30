@@ -425,7 +425,7 @@ func (a *App) showSessionSelector(host *model.Host, home string, sessions []sshp
 
 	list := tview.NewList()
 	list.SetBorder(true).
-		SetTitle(" Sessions — "+host.Name+" ").
+		SetTitle(" Sessions — " + host.Name + " ").
 		SetTitleAlign(tview.AlignCenter).
 		SetBorderColor(tcell.ColorCornflowerBlue)
 	list.ShowSecondaryText(false)

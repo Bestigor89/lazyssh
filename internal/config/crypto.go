@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	encPrefix  = "enc:"
-	saltLen    = 16
-	nonceLen   = 12
-	keyLen     = 32
-	a2Time     = 3
-	a2Memory   = 64 * 1024 // 64 MB
-	a2Threads  = 4
+	encPrefix = "enc:"
+	saltLen   = 16
+	nonceLen  = 12
+	keyLen    = 32
+	a2Time    = 3
+	a2Memory  = 64 * 1024 // 64 MB
+	a2Threads = 4
 )
 
 // IsEncrypted reports whether s was produced by Encrypt.

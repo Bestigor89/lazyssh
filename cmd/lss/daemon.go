@@ -13,6 +13,22 @@ import (
 	"github.com/creack/pty"
 )
 
+// maxScrollback is the maximum number of bytes of PTY output retained for
+// replay when a client re-attaches to an existing session.
+const maxScrollback = 256 * 1024
+
+// scrollback is a simple capped byte buffer for PTY output.
+type scrollback struct {
+	data []byte
+}
+
+func (s *scrollback) write(p []byte) {
+	s.data = append(s.data, p...)
+	if len(s.data) > maxScrollback {
+		s.data = s.data[len(s.data)-maxScrollback:]
+	}
+}
+
 // runDaemon is the daemon mode: allocate PTY, start shell, serve the unix socket.
 // Called when LSS_DAEMON=1 is set in the environment.
 func runDaemon(name, socketPath string) {
@@ -55,9 +71,13 @@ func runDaemon(name, socketPath string) {
 		os.Remove(pidFile)
 	}()
 
-	// PTY drain: forward output to the current client (if any), discard otherwise.
+	// PTY drain: buffer output for replay on reattach and forward to the
+	// current client (if any). All writes to the client conn happen under mu
+	// so that the replay block in the accept loop cannot interleave with
+	// live output.
 	var mu sync.Mutex
 	var current net.Conn
+	var sb scrollback
 
 	go func() {
 		buf := make([]byte, 4096)
@@ -65,16 +85,16 @@ func runDaemon(name, socketPath string) {
 			n, err := ptmx.Read(buf)
 			if n > 0 {
 				mu.Lock()
-				c := current
-				mu.Unlock()
-				if c != nil {
-					if werr := writeFrame(c, fData, buf[:n]); werr != nil {
+				sb.write(buf[:n])
+				if current != nil {
+					if werr := writeFrame(current, fData, buf[:n]); werr != nil {
 						// Write failed — client is dead. Closing the conn
 						// causes readFrame in handleClient to return an error,
 						// which closes done, returns handleClient, and clears current.
-						c.Close()
+						current.Close()
 					}
 				}
+				mu.Unlock()
 			}
 			if err != nil {
 				return
@@ -94,12 +114,21 @@ func runDaemon(name, socketPath string) {
 			mu.Lock()
 			busy := current != nil
 			if !busy {
+				// Replay buffered output before setting current so that the
+				// PTY-drain goroutine cannot interleave live data between the
+				// replay and the moment we start forwarding normally.
+				if len(sb.data) > 0 {
+					if werr := writeFrame(c, fData, sb.data); werr != nil {
+						c.Close()
+						mu.Unlock()
+						return
+					}
+				}
 				current = c
 			}
 			mu.Unlock()
 
 			if busy {
-				// Bug 2 fix: immediately tell the caller the session is busy.
 				_ = writeFrame(c, fError, []byte("session already attached"))
 				c.Close()
 				return
