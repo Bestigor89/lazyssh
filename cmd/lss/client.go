@@ -41,6 +41,17 @@ func runClient(socketPath string) error {
 		}
 	}()
 
+	// Close the connection cleanly on SIGHUP / SIGTERM so the daemon
+	// detects the disconnect immediately instead of waiting indefinitely.
+	// SIGHUP is sent by sshd when the SSH session ends (window close, network drop).
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	go func() {
+		<-sigs
+		conn.Close()
+	}()
+
 	var wg sync.WaitGroup
 	var clientErr error
 

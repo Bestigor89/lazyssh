@@ -21,13 +21,7 @@ func LaunchTerminal(tApp *tview.Application, host *model.Host, remoteCmd string)
 	var runErr error
 
 	tApp.Suspend(func() {
-		// Reset terminal state that tcell/tview may have altered so that
-		// full-screen remote programs (like lss) start in a clean mode.
-		if sttyPath, err := exec.LookPath("stty"); err == nil {
-			c := exec.Command(sttyPath, "sane")
-			c.Stdin = os.Stdin
-			_ = c.Run()
-		}
+		stttySane()
 
 		args := sshArgs(host, remoteCmd)
 		cmd := exec.Command("ssh", args...)
@@ -41,9 +35,21 @@ func LaunchTerminal(tApp *tview.Application, host *model.Host, remoteCmd string)
 				runErr = fmt.Errorf("ssh: %w", err)
 			}
 		}
+
+		// Reset again after ssh exits: an abrupt disconnect (network drop,
+		// closed window) can leave the local PTY in raw mode, breaking tview.
+		stttySane()
 	})
 
 	return runErr
+}
+
+func stttySane() {
+	if p, err := exec.LookPath("stty"); err == nil {
+		c := exec.Command(p, "sane")
+		c.Stdin = os.Stdin
+		_ = c.Run()
+	}
 }
 
 // sshArgs builds the argument list for the ssh command.

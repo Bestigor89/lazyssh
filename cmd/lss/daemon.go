@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 )
@@ -67,7 +68,12 @@ func runDaemon(name, socketPath string) {
 				c := current
 				mu.Unlock()
 				if c != nil {
-					_ = writeFrame(c, fData, buf[:n])
+					if werr := writeFrame(c, fData, buf[:n]); werr != nil {
+						// Write failed — client is dead. Closing the conn
+						// causes readFrame in handleClient to return an error,
+						// which closes done, returns handleClient, and clears current.
+						c.Close()
+					}
 				}
 			}
 			if err != nil {
@@ -128,15 +134,34 @@ func handleClient(conn net.Conn, ptmx *os.File, shellDone <-chan struct{}) {
 					rows := uint16(payload[0])<<8 | uint16(payload[1])
 					cols := uint16(payload[2])<<8 | uint16(payload[3])
 
-					// Bug 1 fix: TIOCSWINSZ only sends SIGWINCH when the size
-					// changes. On reattach the terminal may have the same
-					// dimensions, so full-screen apps (htop, vim, …) never
-					// redraw. Setting a dummy size first guarantees a SIGWINCH
-					// regardless of whether the dimensions actually changed.
+					// TIOCSWINSZ only sends SIGWINCH when the size changes.
+					// Set a dummy size first to guarantee a full redraw on
+					// reattach even when the terminal dimensions are unchanged.
 					_ = pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols + 1})
 					_ = pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols})
 				}
 			case fDetach:
+				return
+			}
+		}
+	}()
+
+	// Keepalive: detect dead clients when the shell produces no output.
+	// Sends a zero-length fData frame every 30 s; a write failure means
+	// the client is gone → close conn → reader goroutine returns → done closes.
+	go func() {
+		tick := time.NewTicker(30 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-tick.C:
+				if err := writeFrame(conn, fData, nil); err != nil {
+					conn.Close()
+					return
+				}
+			case <-done:
+				return
+			case <-shellDone:
 				return
 			}
 		}
