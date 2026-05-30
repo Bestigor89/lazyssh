@@ -23,3 +23,4 @@ coverage.txt
 # Go workspace (if using)
 go.work
 go.work.sum
+internal/ssh/embed/lss-linux-*

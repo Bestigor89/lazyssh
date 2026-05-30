@@ -161,6 +161,17 @@ func (c *Client) Close() {
 	}
 }
 
+// RunCommand executes a command on the remote host and returns its stdout.
+// A non-zero exit code is returned as an error.
+func (c *Client) RunCommand(cmd string) ([]byte, error) {
+	sess, err := c.sshConn.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("new session: %w", err)
+	}
+	defer sess.Close()
+	return sess.Output(cmd)
+}
+
 // HomeDir returns the remote working directory (typically the home dir).
 func (c *Client) HomeDir() string {
 	wd, err := c.sftpClient.Getwd()

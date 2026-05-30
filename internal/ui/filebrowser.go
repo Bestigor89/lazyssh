@@ -943,13 +943,7 @@ func openEditor(tApp *tview.Application, path string) {
 // --- SSH terminal (t / Ctrl+O) ----------------------------------------------
 
 func (fb *fileBrowser) openTerminal() {
-	go func() {
-		if err := sshpkg.LaunchTerminal(fb.app.tApp, fb.host); err != nil {
-			fb.app.tApp.QueueUpdateDraw(func() {
-				fb.app.showError(err.Error())
-			})
-		}
-	}()
+	fb.app.openSessionSelector(fb.host)
 }
 
 // --- local FS helpers -------------------------------------------------------

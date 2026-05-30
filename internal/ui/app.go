@@ -313,6 +313,152 @@ func (a *App) promptInputModal(title, label, initial string, onOK func(string)) 
 	a.tApp.SetFocus(form)
 }
 
+// --- persistent session selector --------------------------------------------
+
+// openSessionSelector connects to host, checks/deploys lss, lists sessions and
+// shows a selection modal. Falls back to a plain shell on unsupported systems.
+func (a *App) openSessionSelector(host *model.Host) {
+	a.showInfo("Connecting to " + host.UserHost() + "…")
+	a.connectSFTP(host, func(client *sshpkg.Client) {
+		// We are on the UI goroutine here (inside QueueUpdateDraw).
+		a.showInfo("Checking sessions…")
+		go a.prepareSession(host, client)
+	})
+}
+
+// prepareSession runs in a goroutine: detects arch, ensures lss is deployed,
+// lists sessions, then transitions to the session selector modal.
+func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
+	arch, err := sshpkg.DetectArch(client)
+	if err != nil {
+		// Non-Linux or unsupported arch — open plain shell silently.
+		a.tApp.QueueUpdateDraw(func() { a.removeModal() })
+		_ = sshpkg.LaunchTerminal(a.tApp, host, "")
+		return
+	}
+
+	home, err := client.RemoteHome()
+	if err != nil {
+		a.tApp.QueueUpdateDraw(func() {
+			a.removeModal()
+			a.showError("get home dir: " + err.Error())
+		})
+		return
+	}
+
+	if !client.HelperInstalled(home) {
+		bin := sshpkg.LSSHelper(arch)
+		if len(bin) == 0 {
+			// Binary not embedded (dev build) — offer plain shell.
+			a.tApp.QueueUpdateDraw(func() {
+				a.removeModal()
+				a.showConfirm(
+					"Session helper not available.\nOpen a plain shell instead?",
+					func() { go sshpkg.LaunchTerminal(a.tApp, host, "") },
+				)
+			})
+			return
+		}
+
+		// Ask the user for permission to deploy.
+		ch := make(chan bool, 1)
+		a.tApp.QueueUpdateDraw(func() {
+			a.removeModal()
+			m := tview.NewModal().
+				SetText(fmt.Sprintf(
+					"Deploy session helper to [yellow]%s[-]?\n(~%d KB, no root required)",
+					host.UserHost(), len(bin)/1024)).
+				AddButtons([]string{"Deploy", "Cancel"}).
+				SetDoneFunc(func(_ int, label string) {
+					a.removeModal()
+					ch <- label == "Deploy"
+				})
+			a.pages.AddPage(modalPage, m, true, true)
+			a.tApp.SetFocus(m)
+		})
+
+		if ok := <-ch; !ok {
+			return
+		}
+
+		a.tApp.QueueUpdateDraw(func() { a.showInfo("Deploying session helper…") })
+		if err := client.UploadHelper(home, bin); err != nil {
+			a.tApp.QueueUpdateDraw(func() {
+				a.removeModal()
+				a.showError("Deploy helper: " + err.Error())
+			})
+			return
+		}
+	}
+
+	sessions, _ := sshpkg.ListSessions(client, home)
+
+	a.tApp.QueueUpdateDraw(func() {
+		a.removeModal()
+		a.showSessionSelector(host, home, sessions)
+	})
+}
+
+// showSessionSelector displays a tview.List for selecting or creating a session.
+func (a *App) showSessionSelector(host *model.Host, home string, sessions []sshpkg.Session) {
+	const page = "sessions"
+
+	list := tview.NewList()
+	list.SetBorder(true).
+		SetTitle(" Sessions — "+host.Name+" ").
+		SetTitleAlign(tview.AlignCenter).
+		SetBorderColor(tcell.ColorCornflowerBlue)
+	list.ShowSecondaryText(false)
+
+	closePage := func() {
+		a.pages.RemovePage(page)
+		a.tApp.SetFocus(a.hostList.tree)
+	}
+
+	launch := func(remoteCmd string) {
+		closePage()
+		go func() {
+			if err := sshpkg.LaunchTerminal(a.tApp, host, remoteCmd); err != nil {
+				a.tApp.QueueUpdateDraw(func() { a.showError(err.Error()) })
+			}
+		}()
+	}
+
+	list.AddItem("[+] New session", "", 0, func() {
+		a.pages.RemovePage(page)
+		a.promptInputModal("New Session", "Session name", "", func(name string) {
+			if name != "" {
+				launch(sshpkg.NewSessionCmd(home, name))
+			}
+		})
+	})
+
+	for _, s := range sessions {
+		name := s.Name
+		list.AddItem("  "+name, "", 0, func() {
+			launch(sshpkg.AttachSessionCmd(home, name))
+		})
+	}
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			closePage()
+			return nil
+		}
+		return event
+	})
+
+	height := len(sessions) + 5
+	if height < 7 {
+		height = 7
+	}
+	if height > 20 {
+		height = 20
+	}
+	a.pages.AddPage(page, centeredBox(list, 52, height), true, true)
+	a.tApp.SetFocus(list)
+}
+
 // --- layout helpers ---------------------------------------------------------
 
 // centeredBox wraps p in a Flex that centres it at the given dimensions.

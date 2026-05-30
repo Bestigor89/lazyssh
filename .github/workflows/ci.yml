@@ -25,5 +25,8 @@ jobs:
       - name: go test
         run: go test ./...
 
+      - name: Build lss helpers
+        run: make lss-helpers
+
       - name: Build
-        run: go build ./cmd/lazyssh
+        run: go build -tags embed_lss ./cmd/lazyssh

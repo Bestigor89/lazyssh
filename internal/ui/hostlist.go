@@ -9,7 +9,6 @@ import (
 
 	"github.com/Bestigor89/lazyssh/internal/config"
 	"github.com/Bestigor89/lazyssh/internal/model"
-	sshpkg "github.com/Bestigor89/lazyssh/internal/ssh"
 )
 
 // hostList is the main screen: a tree of saved hosts grouped by folder.
@@ -190,15 +189,9 @@ func (hl *hostList) bindKeys() {
 				}
 				return nil
 			case 's', 'S':
-				// SSH terminal.
+				// Open session selector (persistent sessions via lss).
 				if host != nil {
-					go func() {
-						if err := sshpkg.LaunchTerminal(hl.app.tApp, host); err != nil {
-							hl.app.tApp.QueueUpdateDraw(func() {
-								hl.app.showError(err.Error())
-							})
-						}
-					}()
+					hl.app.openSessionSelector(host)
 				}
 				return nil
 			case 'E':

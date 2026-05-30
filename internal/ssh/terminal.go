@@ -13,18 +13,30 @@ import (
 
 // LaunchTerminal suspends the TUI, opens an interactive SSH session using the
 // system ssh binary, then resumes the TUI when the session ends.
-func LaunchTerminal(tApp *tview.Application, host *model.Host) error {
+//
+// remoteCmd is an optional command to run on the remote host (e.g. a lss
+// invocation). An empty string opens a plain login shell. When remoteCmd is
+// non-empty, -t is added to force PTY allocation.
+func LaunchTerminal(tApp *tview.Application, host *model.Host, remoteCmd string) error {
 	var runErr error
 
 	tApp.Suspend(func() {
-		args := sshArgs(host)
+		// Reset terminal state that tcell/tview may have altered so that
+		// full-screen remote programs (like lss) start in a clean mode.
+		if sttyPath, err := exec.LookPath("stty"); err == nil {
+			c := exec.Command(sttyPath, "sane")
+			c.Stdin = os.Stdin
+			_ = c.Run()
+		}
+
+		args := sshArgs(host, remoteCmd)
 		cmd := exec.Command("ssh", args...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			// exec.ExitError is normal (user typed "exit" or closed session).
+			// exec.ExitError is normal (user typed "exit", detached, etc.).
 			if _, ok := err.(*exec.ExitError); !ok {
 				runErr = fmt.Errorf("ssh: %w", err)
 			}
@@ -35,13 +47,16 @@ func LaunchTerminal(tApp *tview.Application, host *model.Host) error {
 }
 
 // sshArgs builds the argument list for the ssh command.
-func sshArgs(host *model.Host) []string {
-	args := []string{
-		"-p", strconv.Itoa(host.EffectivePort()),
-	}
+// When remoteCmd is non-empty it is appended after the host and -t is added.
+func sshArgs(host *model.Host, remoteCmd string) []string {
+	args := []string{"-p", strconv.Itoa(host.EffectivePort())}
 	if host.AuthType == model.AuthTypeKey && host.KeyPath != "" {
 		args = append(args, "-i", host.KeyPath)
 	}
-	args = append(args, host.UserHost())
+	if remoteCmd != "" {
+		args = append(args, "-t", host.UserHost(), remoteCmd)
+	} else {
+		args = append(args, host.UserHost())
+	}
 	return args
 }

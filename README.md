@@ -29,8 +29,9 @@ If you manage more than a handful of servers, you have felt the pain: scrolling 
 `~/.ssh/config`, maintaining shell aliases, or wrestling with a GUI app that does not
 belong in a terminal workflow. LazySSH fixes that.
 
-- **Organized at a glance** — group hosts in nested folders (`prod/web`, `staging/db`, …), add tags, filter with live search. No more scrolling.
+- **Organized at a glance** — group hosts in nested folders (`prod/web`, `staging/db`, …), add tags, filter with live search.
 - **SSH + SFTP in one place** — open a shell or a dual-pane file browser without leaving the app.
+- **Sessions that survive disconnects** — built-in session manager keeps your work running when the network drops.
 - **Passwords encrypted at rest** — Argon2id key derivation + AES-256-GCM encryption. One master password per session.
 - **Zero friction** — a single static binary, one YAML file, no daemon, no cloud sync, no Electron.
 
@@ -44,9 +45,33 @@ belong in a terminal workflow. LazySSH fixes that.
 - **Live search** by name, hostname, folder, or tag
 - Import / export the full host list as a plain YAML file
 
+### Persistent sessions
+Press `s` to open the session selector instead of a plain shell. LazySSH automatically
+deploys a small session helper (`lss`, ~2.5 MB) to the remote server the first time — no
+root or package manager needed.
+
+- **Sessions survive disconnects** — close the laptop, lose Wi-Fi, reboot your local machine. The shell and everything running in it stays alive on the server.
+- **Multiple sessions per host** — name them anything (`work`, `build`, `logs`). Each one is independent.
+- **Session selector** — every time you press `s` a list appears: pick an existing session to resume or create a new one.
+- **Detach without closing** — press `Ctrl-\` to leave a session running and return to LazySSH.
+- **Zero config on the server** — no tmux, no screen, no pre-installed software required.
+
+```
+┌─ Sessions — prod-web ─────────────────┐
+│  [+] New session                      │
+│      work                             │
+│      build                            │
+└───────────────────────────────────────┘
+```
+
+How it works: `lss` is a purpose-built session daemon written in Go. It allocates a PTY,
+starts your shell, and listens on a Unix socket. When you detach or lose connectivity the
+shell keeps running. The next `ssh` connection picks up right where you left off.
+LazySSH deploys `lss` once via SFTP and reuses it on every subsequent connection.
+
 ### One-key SSH terminal
-- Press `s` on any host to open a full interactive SSH session
-- The TUI suspends cleanly and hands over the terminal to `ssh`; returns when you exit
+- Press `s` on any host to open the session selector
+- The TUI suspends cleanly and hands over the terminal; returns when you exit or detach
 
 ### Dual-pane SFTP file browser
 - Local panel (left) ↔ remote panel (right), keyboard-navigated
@@ -55,7 +80,7 @@ belong in a terminal workflow. LazySSH fixes that.
 - **Edit** any file in `$EDITOR` — for remote files: download → edit → auto re-upload on save
 - **Create** files and directories on either panel
 - **Delete** with recursive directory removal and confirmation dialogs
-- **Open an SSH terminal** without leaving the file browser (`t` / `Ctrl+O`)
+- **Open an SSH session** without leaving the file browser (`t` / `Ctrl+O`)
 
 ### Authentication
 - **SSH agent** (`$SSH_AUTH_SOCK`) — tried first, automatically
@@ -103,8 +128,8 @@ go install github.com/Bestigor89/lazyssh/cmd/lazyssh@latest
 ```bash
 git clone https://github.com/Bestigor89/lazyssh.git
 cd lazyssh
-make build     # → ./lazyssh
-make install   # → $GOPATH/bin/lazyssh
+make build-full  # builds lss helpers then lazyssh with sessions embedded
+make install     # → $GOPATH/bin/lazyssh
 ```
 
 ### Prebuilt binaries
@@ -129,6 +154,9 @@ extract and put `lazyssh` anywhere on your `$PATH`.
 | `$EDITOR` / `$VISUAL` | In-app file editing — falls back to `nano`, `vim`, `vi` |
 | `SSH_AUTH_SOCK` | SSH agent (optional, auto-detected) |
 
+The `lss` session helper has **no runtime dependencies** — it is deployed automatically
+to Linux servers (amd64 / arm64) the first time you open a session.
+
 ---
 
 ## Quick start
@@ -142,7 +170,7 @@ $ lazyssh
 | Add your first host | `a` | Opens the Add Host form |
 | Fill in name, hostname, user | — | Port defaults to 22; Auth Type defaults to `key` |
 | Save | `Save` button | Host appears in the list |
-| Open SSH shell | `s` | SSH session starts immediately |
+| Open session selector | `s` | Lists existing sessions or lets you create a new one |
 | Open SFTP browser | `Enter` | Connects and opens the dual-pane browser |
 | Quit | `q` | Exits the app |
 
@@ -196,6 +224,33 @@ hosts:
 
 ---
 
+## Persistent sessions in depth
+
+When you press `s`, LazySSH:
+
+1. Opens an SFTP connection to the host.
+2. Checks whether `~/.lazyssh/bin/lss` exists on the server.
+3. If not — asks permission and uploads the embedded `lss` binary (~2.5 MB, no root needed).
+4. Runs `lss list` to fetch active sessions.
+5. Shows the session selector. Pick one or create a new one.
+6. Runs `ssh -t host lss new <name>` or `lss attach <name>` — you land directly in your shell.
+
+**Session files live in `~/.lazyssh/sessions/` on the remote server.** Each session is a
+Unix socket + a PID file. Stale entries (process died) are cleaned up automatically on
+the next `lss list`.
+
+**Supported remote platforms:** Linux x86-64 and ARM64. On macOS servers or other
+architectures LazySSH falls back to a plain SSH shell automatically.
+
+| Scenario | Result |
+|---|---|
+| Network drops mid-session | Shell keeps running; reconnect and reattach |
+| Press `Ctrl-\` | Detach — session stays alive, TUI resumes |
+| Type `exit` in shell | Session closes normally |
+| Run `lss kill <name>` on server | Session terminated |
+
+---
+
 ## Security details
 
 | Concern | Behaviour |
@@ -206,6 +261,7 @@ hosts:
 | Unknown host | SHA-256 fingerprint shown; requires explicit **Trust** |
 | Host key change | Hard error + MITM warning; old entry must be removed manually |
 | Config permissions | File `0600`, directory `0700` |
+| lss binary | Deployed to user home only (`~/.lazyssh/`); no elevated privileges |
 
 ---
 
@@ -219,13 +275,28 @@ hosts:
 | `e` | Edit selected host |
 | `d` | Delete selected host (confirmation required) |
 | `Enter` | Open SFTP file browser |
-| `s` / `S` | Launch interactive SSH terminal |
+| `s` / `S` | Open session selector (persistent sessions) |
 | `/` | Open live search / filter bar |
 | `Esc` | Close search bar |
 | `I` | Import hosts from a YAML file |
 | `E` | Export hosts to a YAML file |
 | `q` | Quit |
 | `Ctrl+Q` | Quit (alternative) |
+
+### Session selector
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Navigate sessions |
+| `Enter` | Attach to selected session / create new |
+| `Esc` | Cancel and return to host list |
+
+### Inside a session
+
+| Key | Action |
+|---|---|
+| `Ctrl-\` | Detach — session stays running, return to LazySSH |
+| `exit` | Close session normally |
 
 ### File browser
 
@@ -240,7 +311,7 @@ hosts:
 | `n` / `N` | Create new empty file |
 | `m` / `M` / `F7` | Create new directory |
 | `x` / `X` / `F8` / `Delete` | Delete file or directory |
-| `t` / `T` / `Ctrl+O` | Open SSH terminal |
+| `t` / `T` / `Ctrl+O` | Open session selector |
 | `Esc` | Disconnect and return to host list |
 
 ### File viewer
@@ -256,13 +327,22 @@ hosts:
 ## Architecture
 
 ```
-cmd/lazyssh/        CLI entry point: flags, version, TUI bootstrap
+cmd/
+  lazyssh/      CLI entry point: flags, version, TUI bootstrap
+  lss/          Session helper daemon (runs on remote Linux servers)
+                  daemon.go  — PTY allocation, Unix socket server
+                  client.go  — raw terminal I/O, resize forwarding, detach
+                  proto.go   — simple length-prefixed frame protocol
+                  main.go    — new / attach / list / kill subcommands
 internal/
-  model/            Host struct, Store, ID generation
-  config/           YAML load/save (0600), Argon2id + AES-GCM crypto, import/export
-  ssh/              SFTP client (upload/download/browse/delete, known_hosts TOFU),
-                    SSH terminal launcher (shells out to system ssh)
-  ui/               tview TUI: host list, host form, dual-pane file browser, modals
+  model/        Host struct, Store, ID generation
+  config/       YAML load/save (0600), Argon2id + AES-GCM crypto, import/export
+  ssh/          SFTP client (upload/download/browse/delete, known_hosts TOFU)
+                SSH terminal launcher (shells out to system ssh)
+                Session manager (deploy lss, list sessions, build remote commands)
+                Embedded lss binaries for linux/amd64 and linux/arm64
+  ui/           tview TUI: host list, host form, dual-pane file browser,
+                session selector, modals
 ```
 
 Strict dependency order: `model` ← `config` ← `ssh` ← `ui` ← `cmd`. Nothing in `internal/` imports from `cmd/`.
@@ -271,18 +351,9 @@ Strict dependency order: `model` ← `config` ← `ssh` ← `ui` ← `cmd`. Noth
 
 ## Roadmap — come build this with us
 
-LazySSH is used daily and works well. These are the features worth adding — if any of them get you excited, open an issue and let's talk.
-
-**High priority (relatively small scope — great first PRs):**
-- [ ] GitHub Actions CI — `go test`, `go vet`, `go build` on every push
-- [ ] Prebuilt release binaries via [GoReleaser](https://goreleaser.com) + GitHub Releases
-- [ ] Homebrew formula
-- [ ] `--help` flag with feature overview
-
 **Medium scope:**
 - [ ] Support passphrase-protected private keys (prompt at connect time)
 - [ ] Configurable color themes
-- [ ] Mouse support (`tview.EnableMouse`)
 - [ ] Transfer queue — a panel showing all in-progress uploads and downloads
 - [ ] Parallel multi-file transfers
 
@@ -293,7 +364,7 @@ LazySSH is used daily and works well. These are the features worth adding — if
 - [ ] Windows support (mostly terminal-handling differences)
 - [ ] i18n / localization
 
-The codebase is ~2 700 lines of idiomatic Go with no framework magic. If you have read a Go struct, you can contribute. **Good first issues are labeled in the issue tracker.**
+The codebase is ~3 500 lines of idiomatic Go with no framework magic. If you have read a Go struct, you can contribute. **Good first issues are labeled in the issue tracker.**
 
 ---
 
@@ -310,7 +381,7 @@ You might also find these useful:
 | [Termius](https://termius.com) | GUI SSH client with SFTP (commercial) |
 | [FileZilla](https://filezilla-project.org) | GUI SFTP/FTP client |
 
-LazySSH's focus: **keyboard-first, terminal-native, encrypted config, SFTP built in, one binary.**
+LazySSH's focus: **keyboard-first, terminal-native, encrypted config, persistent sessions, SFTP built in, one binary.**
 
 ---
 
@@ -341,6 +412,7 @@ Built with excellent open-source libraries:
 - [pkg/sftp](https://github.com/pkg/sftp) — SFTP client
 - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) — SSH client, known_hosts, Argon2id
 - [gopkg.in/yaml.v3](https://gopkg.in/yaml.v3) — config serialization
+- [creack/pty](https://github.com/creack/pty) — PTY allocation for the session helper
 
 ---
 
@@ -349,5 +421,6 @@ ssh manager tui, sftp client terminal, keyboard driven ssh, go tui ssh manager,
 terminal sftp file browser, lazygit for ssh, ssh connection organizer, remote server manager,
 cli ssh manager, ncurses ssh, ssh bookmark manager, sftp tui go, terminal ssh client,
 dual pane file manager ssh, scp client terminal, winscp alternative terminal,
-ssh connection manager linux mac, ssh manager encrypted, sftp go cli
+ssh connection manager linux mac, ssh manager encrypted, sftp go cli,
+persistent ssh sessions, ssh session manager, tmux alternative, ssh reconnect
 -->

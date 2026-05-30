@@ -5,6 +5,7 @@ project_name: lazyssh
 before:
   hooks:
     - go mod tidy
+    - make lss-helpers  # cross-compile lss for linux amd64+arm64 before embedding
 
 # ── Binaries ──────────────────────────────────────────────────────────────────
 builds:
@@ -13,6 +14,8 @@ builds:
     binary: lazyssh
     ldflags:
       - -s -w -X main.version={{.Version}}
+    tags:
+      - embed_lss
     env:
       - CGO_ENABLED=0
     goos:

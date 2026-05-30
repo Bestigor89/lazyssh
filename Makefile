@@ -5,10 +5,27 @@ LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
 .DEFAULT_GOAL := help
 
-## build: Compile the binary (output: ./lazyssh)
+## build: Compile the binary without embedded lss helpers (output: ./lazyssh)
 .PHONY: build
 build:
 	go build $(LDFLAGS) -o $(BINARY) $(CMD)
+
+## build-full: Build lss helpers then compile lazyssh with embedded helpers
+.PHONY: build-full
+build-full: lss-helpers
+	go build $(LDFLAGS) -tags embed_lss -o $(BINARY) $(CMD)
+
+## lss-helpers: Cross-compile lss for linux/amd64 and linux/arm64
+.PHONY: lss-helpers
+lss-helpers: internal/ssh/embed/lss-linux-amd64 internal/ssh/embed/lss-linux-arm64
+
+internal/ssh/embed/lss-linux-amd64:
+	mkdir -p internal/ssh/embed
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $@ ./cmd/lss
+
+internal/ssh/embed/lss-linux-arm64:
+	mkdir -p internal/ssh/embed
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $@ ./cmd/lss
 
 ## install: Install the binary to $GOPATH/bin
 .PHONY: install
