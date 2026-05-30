@@ -331,9 +331,13 @@ func (a *App) openSessionSelector(host *model.Host) {
 func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 	arch, err := sshpkg.DetectArch(client)
 	if err != nil {
-		// Non-Linux or unsupported arch — open plain shell silently.
-		a.tApp.QueueUpdateDraw(func() { a.removeModal() })
-		_ = sshpkg.LaunchTerminal(a.tApp, host, "")
+		// Non-Linux or unsupported arch — fall back to a plain shell.
+		// QueueUpdateDraw so LaunchTerminal runs on the event-loop goroutine.
+		client.Close()
+		a.tApp.QueueUpdateDraw(func() {
+			a.removeModal()
+			_ = sshpkg.LaunchTerminal(a.tApp, host, "")
+		})
 		return
 	}
 
@@ -351,11 +355,12 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 	if !client.HelperReady(home, bin) {
 		if len(bin) == 0 {
 			// Dev build without embedded binary — offer plain shell.
+			client.Close()
 			a.tApp.QueueUpdateDraw(func() {
 				a.removeModal()
 				a.showConfirm(
 					"Session helper not available.\nOpen a plain shell instead?",
-					func() { go sshpkg.LaunchTerminal(a.tApp, host, "") },
+					func() { _ = sshpkg.LaunchTerminal(a.tApp, host, "") },
 				)
 			})
 			return
@@ -407,6 +412,7 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 	}
 
 	sessions, _ := sshpkg.ListSessions(client, home)
+	client.Close() // done with SFTP; release the connection before entering the session
 
 	a.tApp.QueueUpdateDraw(func() {
 		a.removeModal()
@@ -432,11 +438,13 @@ func (a *App) showSessionSelector(host *model.Host, home string, sessions []sshp
 
 	launch := func(remoteCmd string) {
 		closePage()
-		go func() {
-			if err := sshpkg.LaunchTerminal(a.tApp, host, remoteCmd); err != nil {
-				a.tApp.QueueUpdateDraw(func() { a.showError(err.Error()) })
-			}
-		}()
+		// Call directly on the tview event-loop goroutine — that is what
+		// tview.Application.Suspend is designed for. Spawning a goroutine
+		// creates a race with the event loop that causes the UI to freeze
+		// after Resume (keyboard input ignored, screen not updated).
+		if err := sshpkg.LaunchTerminal(a.tApp, host, remoteCmd); err != nil {
+			a.showError(err.Error())
+		}
 	}
 
 	list.AddItem("[+] New session", "", 0, func() {
