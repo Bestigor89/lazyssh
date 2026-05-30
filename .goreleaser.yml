@@ -68,27 +68,27 @@ nfpms:
 # define_method syntax on Homebrew 5.x.
 
 # ── AUR (Arch Linux User Repository) ─────────────────────────────────────────
-# Package name "lazyssh-bin" is AUR convention for prebuilt binary packages.
-# Requires AUR_SSH_PRIVATE_KEY secret in GitHub repo settings.
-# On first release, GoReleaser creates the AUR package automatically.
-aurs:
-  - name: lazyssh-bin
-    homepage: "https://github.com/Bestigor89/lazyssh"
-    description: "Keyboard-driven SSH manager and dual-pane SFTP file browser for the terminal"
-    maintainers:
-      - "Igor Dudnyk <igordudnek@gmail.com>"
-    license: "PolyForm-Noncommercial-1.0.0"
-    private_key: "{{ .Env.AUR_SSH_PRIVATE_KEY }}"
-    git_url: "ssh://aur@aur.archlinux.org/lazyssh-bin.git"
-    skip_upload: auto
-    provides:
-      - lazyssh
-    conflicts:
-      - lazyssh
-    package: |-
-      install -Dm755 "${srcdir}/lazyssh" "${pkgdir}/usr/bin/lazyssh"
-      install -Dm644 "${srcdir}/README.md" "${pkgdir}/usr/share/doc/lazyssh/README.md"
-      install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/lazyssh/LICENSE"
+# Temporarily disabled — AUR account needs 24h before first package upload.
+# To re-enable: uncomment the aurs block below and run a new release.
+#
+# aurs:
+#   - name: lazyssh-bin
+#     homepage: "https://github.com/Bestigor89/lazyssh"
+#     description: "Keyboard-driven SSH manager and dual-pane SFTP file browser for the terminal"
+#     maintainers:
+#       - "Igor Dudnyk <igordudnek@gmail.com>"
+#     license: "PolyForm-Noncommercial-1.0.0"
+#     private_key: "{{ .Env.AUR_SSH_PRIVATE_KEY }}"
+#     git_url: "ssh://aur@aur.archlinux.org/lazyssh-bin.git"
+#     skip_upload: auto
+#     provides:
+#       - lazyssh
+#     conflicts:
+#       - lazyssh
+#     package: |-
+#       install -Dm755 "${srcdir}/lazyssh" "${pkgdir}/usr/bin/lazyssh"
+#       install -Dm644 "${srcdir}/README.md" "${pkgdir}/usr/share/doc/lazyssh/README.md"
+#       install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/lazyssh/LICENSE"
 
 # ── Checksums ─────────────────────────────────────────────────────────────────
 checksum:
