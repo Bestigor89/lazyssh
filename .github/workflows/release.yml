@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.3)"
+        required: true
 
 permissions:
   contents: write
@@ -40,7 +45,7 @@ jobs:
       - name: Create and upload Homebrew bottles
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           chmod +x .github/scripts/create_bottles.sh
           .github/scripts/create_bottles.sh
@@ -48,5 +53,5 @@ jobs:
       - name: Update Homebrew formula
         env:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: python3 .github/scripts/update_formula.py
