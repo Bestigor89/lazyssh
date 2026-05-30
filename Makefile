@@ -40,6 +40,13 @@ vet:
 tidy:
 	go mod tidy
 
+## tag: Create and push a release tag (usage: make tag V=1.2.3)
+.PHONY: tag
+tag:
+	@test -n "$(V)" || (echo "Usage: make tag V=1.2.3"; exit 1)
+	git tag -a v$(V) -m "Release v$(V)"
+	git push origin v$(V)
+
 ## clean: Remove build artifacts
 .PHONY: clean
 clean:
