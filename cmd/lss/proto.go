@@ -6,10 +6,11 @@ const (
 	fData   byte = 0
 	fWinch  byte = 1
 	fDetach byte = 2
+	fError  byte = 3 // server → client: error message, connection will close
 )
 
 // Each frame: [type:1][lenHi:1][lenMid:1][lenLo:1][payload...]
-// Max payload: 16 MB (more than enough for terminal I/O).
+// Max payload: 16 MB.
 
 func writeFrame(w io.Writer, typ byte, payload []byte) error {
 	n := len(payload)

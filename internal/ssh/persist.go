@@ -1,14 +1,20 @@
 package ssh
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
 )
 
-const lssRelPath = ".lazyssh/bin/lss"
+const (
+	lssRelPath  = ".lazyssh/bin/lss"
+	lssHashFile = ".lazyssh/bin/lss.sha256"
+)
 
 // Session represents a running lss session on a remote host.
 type Session struct {
@@ -45,18 +51,37 @@ func DetectArch(c *Client) (string, error) {
 	}
 }
 
-// HelperInstalled reports whether the lss binary exists on the remote host.
-func (c *Client) HelperInstalled(home string) bool {
-	_, err := c.sftpClient.Stat(path.Join(home, lssRelPath))
-	return err == nil
+// HelperReady reports whether the lss binary on the server exists AND matches
+// the embedded binary. Returns false when lss is absent or outdated (bug 3 fix).
+// expected may be nil — in that case only the existence check is performed.
+func (c *Client) HelperReady(home string, expected []byte) bool {
+	if _, err := c.sftpClient.Stat(path.Join(home, lssRelPath)); err != nil {
+		return false // not installed at all
+	}
+	if len(expected) == 0 {
+		return true // no embedded binary to compare against
+	}
+
+	// Read the hash written alongside the binary during deployment.
+	f, err := c.sftpClient.Open(path.Join(home, lssHashFile))
+	if err != nil {
+		return false // hash file missing → treat as outdated
+	}
+	defer f.Close()
+	stored, _ := io.ReadAll(f)
+
+	h := sha256.Sum256(expected)
+	return strings.TrimSpace(string(stored)) == hex.EncodeToString(h[:])
 }
 
-// UploadHelper uploads the lss binary to ~/.lazyssh/bin/lss on the remote.
+// UploadHelper uploads the lss binary to ~/.lazyssh/bin/lss and writes a
+// SHA-256 hash file used by HelperReady for future version checks.
 func (c *Client) UploadHelper(home string, data []byte) error {
 	binDir := path.Join(home, ".lazyssh", "bin")
 	if err := c.sftpClient.MkdirAll(binDir); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
+
 	dest := path.Join(home, lssRelPath)
 	f, err := c.sftpClient.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
@@ -66,7 +91,20 @@ func (c *Client) UploadHelper(home string, data []byte) error {
 	if _, err := f.Write(data); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
-	return c.sftpClient.Chmod(dest, 0755)
+	if err := c.sftpClient.Chmod(dest, 0755); err != nil {
+		return fmt.Errorf("chmod: %w", err)
+	}
+
+	// Write hash file so future connects can detect a version mismatch.
+	h := sha256.Sum256(data)
+	hashPath := path.Join(home, lssHashFile)
+	hf, err := c.sftpClient.OpenFile(hashPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
+	if err != nil {
+		return nil // non-fatal: update check will just redeploy next time
+	}
+	defer hf.Close()
+	_, _ = hf.Write([]byte(hex.EncodeToString(h[:])))
+	return nil
 }
 
 // ListSessions returns the active lss sessions on the remote host.

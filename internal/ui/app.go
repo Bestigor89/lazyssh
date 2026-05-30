@@ -346,10 +346,11 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 		return
 	}
 
-	if !client.HelperInstalled(home) {
-		bin := sshpkg.LSSHelper(arch)
+	bin := sshpkg.LSSHelper(arch)
+
+	if !client.HelperReady(home, bin) {
 		if len(bin) == 0 {
-			// Binary not embedded (dev build) — offer plain shell.
+			// Dev build without embedded binary — offer plain shell.
 			a.tApp.QueueUpdateDraw(func() {
 				a.removeModal()
 				a.showConfirm(
@@ -360,18 +361,28 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 			return
 		}
 
-		// Ask the user for permission to deploy.
+		// Determine whether this is a first install or an update.
+		isUpdate := client.HelperReady(home, nil) // file exists but hash differs
+		actionLabel := "Deploy"
+		promptMsg := fmt.Sprintf(
+			"Deploy session helper to [yellow]%s[-]?\n(~%d KB, no root required)",
+			host.UserHost(), len(bin)/1024)
+		if isUpdate {
+			actionLabel = "Update"
+			promptMsg = fmt.Sprintf(
+				"Update session helper on [yellow]%s[-] to the current version?\n(~%d KB, no root required)",
+				host.UserHost(), len(bin)/1024)
+		}
+
 		ch := make(chan bool, 1)
 		a.tApp.QueueUpdateDraw(func() {
 			a.removeModal()
 			m := tview.NewModal().
-				SetText(fmt.Sprintf(
-					"Deploy session helper to [yellow]%s[-]?\n(~%d KB, no root required)",
-					host.UserHost(), len(bin)/1024)).
-				AddButtons([]string{"Deploy", "Cancel"}).
+				SetText(promptMsg).
+				AddButtons([]string{actionLabel, "Cancel"}).
 				SetDoneFunc(func(_ int, label string) {
 					a.removeModal()
-					ch <- label == "Deploy"
+					ch <- label == actionLabel
 				})
 			a.pages.AddPage(modalPage, m, true, true)
 			a.tApp.SetFocus(m)
@@ -381,7 +392,11 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 			return
 		}
 
-		a.tApp.QueueUpdateDraw(func() { a.showInfo("Deploying session helper…") })
+		deployMsg := "Deploying session helper…"
+		if isUpdate {
+			deployMsg = "Updating session helper…"
+		}
+		a.tApp.QueueUpdateDraw(func() { a.showInfo(deployMsg) })
 		if err := client.UploadHelper(home, bin); err != nil {
 			a.tApp.QueueUpdateDraw(func() {
 				a.removeModal()

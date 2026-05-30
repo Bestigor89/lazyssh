@@ -28,7 +28,7 @@ func runClient(socketPath string) error {
 	}
 	defer term.Restore(fd, oldState)
 
-	// Send initial window size.
+	// Send initial window size — triggers a forced redraw on the daemon side.
 	sendWinch(conn)
 
 	// Forward SIGWINCH (terminal resize) to the remote PTY.
@@ -42,6 +42,7 @@ func runClient(socketPath string) error {
 	}()
 
 	var wg sync.WaitGroup
+	var clientErr error
 
 	// server → local stdout
 	wg.Add(1)
@@ -52,8 +53,15 @@ func runClient(socketPath string) error {
 			if err != nil {
 				return
 			}
-			if typ == fData {
+			switch typ {
+			case fData:
 				_, _ = os.Stdout.Write(payload)
+			case fError:
+				// Bug 2 fix: daemon rejected us (session busy). Print the
+				// message after restoring the terminal so it renders correctly.
+				clientErr = fmt.Errorf("%s", payload)
+				conn.Close()
+				return
 			}
 		}
 	}()
@@ -82,7 +90,7 @@ func runClient(socketPath string) error {
 	}()
 
 	wg.Wait()
-	return nil
+	return clientErr
 }
 
 func sendWinch(conn net.Conn) {

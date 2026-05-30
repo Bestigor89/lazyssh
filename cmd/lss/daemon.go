@@ -54,7 +54,7 @@ func runDaemon(name, socketPath string) {
 		os.Remove(pidFile)
 	}()
 
-	// PTY drain: forward output to the current client (if any).
+	// PTY drain: forward output to the current client (if any), discard otherwise.
 	var mu sync.Mutex
 	var current net.Conn
 
@@ -76,22 +76,35 @@ func runDaemon(name, socketPath string) {
 		}
 	}()
 
-	// Accept clients one at a time.
+	// Accept loop runs continuously in a goroutine per connection so that
+	// a busy session can immediately reject a second attach attempt.
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
 
-		mu.Lock()
-		current = conn
-		mu.Unlock()
+		go func(c net.Conn) {
+			mu.Lock()
+			busy := current != nil
+			if !busy {
+				current = c
+			}
+			mu.Unlock()
 
-		handleClient(conn, ptmx, shellDone)
+			if busy {
+				// Bug 2 fix: immediately tell the caller the session is busy.
+				_ = writeFrame(c, fError, []byte("session already attached"))
+				c.Close()
+				return
+			}
 
-		mu.Lock()
-		current = nil
-		mu.Unlock()
+			handleClient(c, ptmx, shellDone)
+
+			mu.Lock()
+			current = nil
+			mu.Unlock()
+		}(conn)
 	}
 }
 
@@ -114,6 +127,13 @@ func handleClient(conn net.Conn, ptmx *os.File, shellDone <-chan struct{}) {
 				if len(payload) == 4 {
 					rows := uint16(payload[0])<<8 | uint16(payload[1])
 					cols := uint16(payload[2])<<8 | uint16(payload[3])
+
+					// Bug 1 fix: TIOCSWINSZ only sends SIGWINCH when the size
+					// changes. On reattach the terminal may have the same
+					// dimensions, so full-screen apps (htop, vim, …) never
+					// redraw. Setting a dummy size first guarantees a SIGWINCH
+					// regardless of whether the dimensions actually changed.
+					_ = pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols + 1})
 					_ = pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols})
 				}
 			case fDetach:
