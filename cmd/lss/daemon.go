@@ -29,6 +29,73 @@ func (s *scrollback) write(p []byte) {
 	}
 }
 
+// session tracks all attached clients and the scrollback buffer.
+// All writes to client conns go through session methods, serialised by mu,
+// because writeFrame issues two Writes per frame and would otherwise interleave.
+type session struct {
+	mu      sync.Mutex
+	clients map[net.Conn]struct{}
+	sb      scrollback
+}
+
+// feed records PTY output and broadcasts it to every attached client.
+func (s *session) feed(data []byte) {
+	s.mu.Lock()
+	s.sb.write(data)
+	s.broadcastLocked(fData, data)
+	s.mu.Unlock()
+}
+
+// ping broadcasts an empty fData frame so dead clients are detected and
+// dropped even when the shell produces no output (global keepalive).
+func (s *session) ping() {
+	s.mu.Lock()
+	s.broadcastLocked(fData, nil)
+	s.mu.Unlock()
+}
+
+// broadcastLocked writes a frame to every client; caller must hold mu.
+// A 5-second write deadline prevents one stalled mirror client from blocking
+// the shared PTY (head-of-line blocking); a timed-out client is dropped.
+func (s *session) broadcastLocked(typ byte, payload []byte) {
+	for c := range s.clients {
+		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := writeFrame(c, typ, payload); err != nil {
+			delete(s.clients, c)
+			c.Close()
+		} else {
+			_ = c.SetWriteDeadline(time.Time{})
+		}
+	}
+}
+
+// add replays buffered scrollback to a new client, then registers it for
+// future broadcasts. Replay runs under mu so live PTY output cannot interleave
+// between the replay frame and normal forwarding.
+// Returns false if the replay write fails; the conn is closed in that case.
+func (s *session) add(c net.Conn) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.sb.data) > 0 {
+		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := writeFrame(c, fData, s.sb.data); err != nil {
+			c.Close()
+			return false
+		}
+		_ = c.SetWriteDeadline(time.Time{})
+	}
+	s.clients[c] = struct{}{}
+	return true
+}
+
+// remove deregisters a client and closes its conn.
+func (s *session) remove(c net.Conn) {
+	s.mu.Lock()
+	delete(s.clients, c)
+	s.mu.Unlock()
+	c.Close()
+}
+
 // runDaemon is the daemon mode: allocate PTY, start shell, serve the unix socket.
 // Called when LSS_DAEMON=1 is set in the environment.
 func runDaemon(name, socketPath string) {
@@ -61,6 +128,8 @@ func runDaemon(name, socketPath string) {
 	pidFile := socketPath[:len(socketPath)-5] + ".pid"
 	writePID(pidFile)
 
+	sess := &session{clients: make(map[net.Conn]struct{})}
+
 	// Close listener and remove files when shell exits.
 	shellDone := make(chan struct{})
 	go func() {
@@ -71,39 +140,36 @@ func runDaemon(name, socketPath string) {
 		os.Remove(pidFile)
 	}()
 
-	// PTY drain: buffer output for replay on reattach and forward to the
-	// current client (if any). All writes to the client conn happen under mu
-	// so that the replay block in the accept loop cannot interleave with
-	// live output.
-	var mu sync.Mutex
-	var current net.Conn
-	var sb scrollback
-
+	// PTY drain: buffer output for replay and broadcast to all attached clients.
 	go func() {
 		buf := make([]byte, 4096)
 		for {
-			n, err := ptmx.Read(buf)
+			n, readErr := ptmx.Read(buf)
 			if n > 0 {
-				mu.Lock()
-				sb.write(buf[:n])
-				if current != nil {
-					if werr := writeFrame(current, fData, buf[:n]); werr != nil {
-						// Write failed — client is dead. Closing the conn
-						// causes readFrame in handleClient to return an error,
-						// which closes done, returns handleClient, and clears current.
-						current.Close()
-					}
-				}
-				mu.Unlock()
+				sess.feed(buf[:n])
 			}
-			if err != nil {
+			if readErr != nil {
 				return
 			}
 		}
 	}()
 
-	// Accept loop runs continuously in a goroutine per connection so that
-	// a busy session can immediately reject a second attach attempt.
+	// Global keepalive: detect dead clients even when the shell produces no
+	// output. Replaces the old per-client keepalive goroutine.
+	go func() {
+		tick := time.NewTicker(30 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-tick.C:
+				sess.ping()
+			case <-shellDone:
+				return
+			}
+		}
+	}()
+
+	// Accept loop: each incoming connection is a new mirror client.
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -111,42 +177,18 @@ func runDaemon(name, socketPath string) {
 		}
 
 		go func(c net.Conn) {
-			mu.Lock()
-			busy := current != nil
-			if !busy {
-				// Replay buffered output before setting current so that the
-				// PTY-drain goroutine cannot interleave live data between the
-				// replay and the moment we start forwarding normally.
-				if len(sb.data) > 0 {
-					if werr := writeFrame(c, fData, sb.data); werr != nil {
-						c.Close()
-						mu.Unlock()
-						return
-					}
-				}
-				current = c
-			}
-			mu.Unlock()
-
-			if busy {
-				_ = writeFrame(c, fError, []byte("session already attached"))
-				c.Close()
+			if !sess.add(c) {
 				return
 			}
-
 			handleClient(c, ptmx, shellDone)
-
-			mu.Lock()
-			current = nil
-			mu.Unlock()
+			sess.remove(c)
 		}(conn)
 	}
 }
 
 // handleClient bridges a connected client to the PTY until detach or shell exit.
+// Closing conn is the caller's responsibility (sess.remove).
 func handleClient(conn net.Conn, ptmx *os.File, shellDone <-chan struct{}) {
-	defer conn.Close()
-
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -175,30 +217,10 @@ func handleClient(conn net.Conn, ptmx *os.File, shellDone <-chan struct{}) {
 		}
 	}()
 
-	// Keepalive: detect dead clients when the shell produces no output.
-	// Sends a zero-length fData frame every 30 s; a write failure means
-	// the client is gone → close conn → reader goroutine returns → done closes.
-	go func() {
-		tick := time.NewTicker(30 * time.Second)
-		defer tick.Stop()
-		for {
-			select {
-			case <-tick.C:
-				if err := writeFrame(conn, fData, nil); err != nil {
-					conn.Close()
-					return
-				}
-			case <-done:
-				return
-			case <-shellDone:
-				return
-			}
-		}
-	}()
-
 	select {
 	case <-done:
 	case <-shellDone:
+		// Shell exited; conn will be closed by sess.remove in the accept loop.
 	}
 }
 
