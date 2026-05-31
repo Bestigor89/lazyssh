@@ -83,6 +83,10 @@ func (c *Client) UploadHelper(home string, data []byte) error {
 	}
 
 	dest := path.Join(home, lssRelPath)
+	// Remove before create: O_TRUNC on a running executable fails with
+	// ETXTBSY (SSH_FX_FAILURE). Unlinking first gives the new binary a
+	// fresh inode while any running lss daemon keeps its old one.
+	_ = c.sftpClient.Remove(dest)
 	f, err := c.sftpClient.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
