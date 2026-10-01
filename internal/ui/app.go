@@ -189,7 +189,7 @@ func (a *App) removeModal() {
 
 // showInfo shows a non-interactive informational overlay (no buttons).
 func (a *App) showInfo(msg string) {
-	m := tview.NewModal().SetText(msg)
+	m := newModal().SetText(msg)
 	a.pages.AddPage(modalPage, m, true, true)
 }
 
@@ -201,7 +201,7 @@ func (a *App) showInfo(msg string) {
 //   - ctx       – cancelled when the user presses Cancel or closeFn is called
 func (a *App) showUpdatableInfo(initialText string) (updateFn func(string), closeFn func(), ctx context.Context) {
 	cancelCtx, cancel := context.WithCancel(context.Background())
-	modal := tview.NewModal().
+	modal := newModal().
 		SetText(initialText).
 		AddButtons([]string{"Cancel"}).
 		SetDoneFunc(func(_ int, _ string) {
@@ -230,7 +230,7 @@ func (a *App) showUpdatableInfo(initialText string) (updateFn func(string), clos
 
 // showError shows an error modal with an OK button.
 func (a *App) showError(msg string) {
-	m := tview.NewModal().
+	m := newModal().
 		SetText("⚠  " + msg).
 		AddButtons([]string{"OK"}).
 		SetDoneFunc(func(_ int, _ string) { a.removeModal() })
@@ -240,7 +240,7 @@ func (a *App) showError(msg string) {
 
 // showConfirm shows a Yes/No confirmation modal.
 func (a *App) showConfirm(msg string, onYes func()) {
-	m := tview.NewModal().
+	m := newModal().
 		SetText(msg).
 		AddButtons([]string{"Yes", "No"}).
 		SetDoneFunc(func(_ int, label string) {
@@ -260,7 +260,7 @@ func (a *App) showUnknownHostModal(hostname, fingerprint string, ch chan<- bool)
 		"Unknown host: [yellow]%s[-]\n\nFingerprint (SHA-256):\n[green]%s[-]\n\nAdd to known_hosts and trust?",
 		hostname, fingerprint,
 	)
-	m := tview.NewModal().
+	m := newModal().
 		SetText(msg).
 		AddButtons([]string{"Trust", "Abort"}).
 		SetDoneFunc(func(_ int, label string) {
@@ -274,7 +274,7 @@ func (a *App) showUnknownHostModal(hostname, fingerprint string, ch chan<- bool)
 // promptMasterPassword shows an input form asking for the master password.
 func (a *App) promptMasterPassword(onOK func(string)) {
 	var pwd string
-	form := tview.NewForm().
+	form := newForm().
 		AddPasswordField("Master Password", "", 40, '*', func(t string) { pwd = t }).
 		AddButton("OK", func() {
 			a.pages.RemovePage("masterpwd")
@@ -296,7 +296,7 @@ func (a *App) promptMasterPassword(onOK func(string)) {
 func (a *App) promptInputModal(title, label, initial string, onOK func(string)) {
 	const page = "input"
 	var val string
-	form := tview.NewForm().
+	form := newForm().
 		AddInputField(label, initial, 50, nil, func(t string) { val = t }).
 		AddButton("OK", func() {
 			a.pages.RemovePage(page)
@@ -311,6 +311,80 @@ func (a *App) promptInputModal(title, label, initial string, onOK func(string)) 
 
 	a.pages.AddPage(page, centeredBox(form, 60, 9), true, true)
 	a.tApp.SetFocus(form)
+}
+
+// --- dialog styling ---------------------------------------------------------
+
+// Button styles shared by all modals and forms. tview's defaults render the
+// focused and unfocused buttons in similar colours, so it is hard to tell which
+// one Enter will trigger. Unfocused buttons are dim grey, the focused one is a
+// bright yellow block.
+var (
+	buttonStyle = tcell.StyleDefault.
+			Background(tcell.ColorDarkSlateGray).
+			Foreground(tcell.ColorSilver)
+	buttonActivatedStyle = tcell.StyleDefault.
+				Background(tcell.ColorYellow).
+				Foreground(tcell.ColorBlack).
+				Bold(true)
+)
+
+// newModal returns a tview.Modal with the app's button styling applied.
+func newModal() *tview.Modal {
+	return tview.NewModal().
+		SetButtonStyle(buttonStyle).
+		SetButtonActivatedStyle(buttonActivatedStyle)
+}
+
+// newForm returns a tview.Form with the app's button styling applied.
+func newForm() *tview.Form {
+	return styleForm(tview.NewForm())
+}
+
+// styleForm applies the app's button styling to an existing form.
+func styleForm(f *tview.Form) *tview.Form {
+	return f.SetButtonStyle(buttonStyle).
+		SetButtonActivatedStyle(buttonActivatedStyle)
+}
+
+// --- SSH connect mode chooser -----------------------------------------------
+
+const (
+	connectSessions = "Sessions (lss)"
+	connectPlainSSH = "Plain SSH"
+)
+
+// chooseSSHMode asks whether to connect through the lss session helper or with
+// a plain system ssh client (no helper upload, no SFTP pre-connect).
+func (a *App) chooseSSHMode(host *model.Host) {
+	m := newModal().
+		SetText("Connect to [yellow]" + host.UserHost() + "[-]\n\n" +
+			"[::b]Sessions[::-] — persistent sessions via lss helper\n" +
+			"[::b]Plain SSH[::-] — regular ssh client, nothing uploaded").
+		AddButtons([]string{connectSessions, connectPlainSSH, "Cancel"}).
+		SetDoneFunc(func(_ int, label string) {
+			a.removeModal()
+			a.tApp.SetFocus(a.hostList.tree)
+			switch label {
+			case connectSessions:
+				a.openSessionSelector(host)
+			case connectPlainSSH:
+				a.openPlainSSH(host)
+			}
+		})
+	a.pages.AddPage(modalPage, m, true, true)
+	a.tApp.SetFocus(m)
+}
+
+// openPlainSSH runs the system ssh client against host without deploying or
+// using the lss helper.
+func (a *App) openPlainSSH(host *model.Host) {
+	// Run in a goroutine — see the comment in showSessionSelector.launch.
+	go func() {
+		if err := sshpkg.LaunchTerminal(a.tApp, host, ""); err != nil {
+			a.tApp.QueueUpdateDraw(func() { a.showError(err.Error()) })
+		}
+	}()
 }
 
 // --- persistent session selector --------------------------------------------
@@ -381,7 +455,7 @@ func (a *App) prepareSession(host *model.Host, client *sshpkg.Client) {
 		ch := make(chan bool, 1)
 		a.tApp.QueueUpdateDraw(func() {
 			a.removeModal()
-			m := tview.NewModal().
+			m := newModal().
 				SetText(promptMsg).
 				AddButtons([]string{actionLabel, "Cancel"}).
 				SetDoneFunc(func(_ int, label string) {

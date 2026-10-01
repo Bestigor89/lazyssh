@@ -35,11 +35,12 @@ func LaunchTerminal(tApp *tview.Application, host *model.Host, remoteCmd string)
 		}
 	})
 
-	// After Resume tcell re-initialises the terminal but does not repaint on its
-	// own — it waits for the next input event. Sync() invalidates the internal
-	// cell buffer and forces an immediate full redraw so the TUI appears without
-	// the user having to press Enter.
-	tApp.Sync()
+	// tcell discards its cell buffer on Suspend (cells are resized to 0x0) and
+	// Resume only clears the terminal, so nothing is shown until tview redraws
+	// the root primitive — which by default happens on the next input event.
+	// Draw() queues a full redraw so the TUI reappears immediately instead of
+	// leaving a black screen until a key is pressed.
+	tApp.Draw()
 
 	return runErr
 }

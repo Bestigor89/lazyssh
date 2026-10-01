@@ -58,7 +58,7 @@ func newHostForm(a *App, existing *model.Host) *hostForm {
 		title = " Edit Host "
 	}
 
-	hf.form = tview.NewForm()
+	hf.form = newForm()
 	hf.form.SetBorder(true).
 		SetTitle(title).
 		SetTitleAlign(tview.AlignCenter).

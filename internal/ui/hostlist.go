@@ -188,10 +188,16 @@ func (hl *hostList) bindKeys() {
 					hl.app.openFileBrowser(host)
 				}
 				return nil
-			case 's', 'S':
-				// Open session selector (persistent sessions via lss).
+			case 's':
+				// Ask: persistent sessions via lss, or plain ssh.
 				if host != nil {
-					hl.app.openSessionSelector(host)
+					hl.app.chooseSSHMode(host)
+				}
+				return nil
+			case 'S':
+				// Shortcut: plain ssh, skipping the lss helper entirely.
+				if host != nil {
+					hl.app.openPlainSSH(host)
 				}
 				return nil
 			case 'E':
@@ -309,6 +315,6 @@ func hostMatchesFilter(h *model.Host, lower string) bool {
 }
 
 func statusText() string {
-	return "[yellow]Enter[-] Files  [yellow]s[-] SSH  [yellow]a[-] Add  [yellow]e[-] Edit  [yellow]d[-] Delete  [yellow]q[-] Quit\n" +
+	return "[yellow]Enter[-] Files  [yellow]s[-] SSH  [yellow]S[-] Plain SSH  [yellow]a[-] Add  [yellow]e[-] Edit  [yellow]d[-] Delete  [yellow]q[-] Quit\n" +
 		"[yellow]/[-] Search  [yellow]I[-] Import  [yellow]E[-] Export"
 }
