@@ -54,7 +54,23 @@ func newHostList(a *App) *hostList {
 		hl.rebuild()
 	})
 	hl.searchBar.SetDoneFunc(func(key tcell.Key) {
-		hl.hideSearch()
+		switch key {
+		case tcell.KeyEnter, tcell.KeyTab:
+			// Keep the filter and move focus to the results.
+			hl.focusResults()
+		default: // Escape
+			hl.hideSearch()
+		}
+	})
+	hl.searchBar.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Navigation keys move the selection in the filtered tree while the
+		// cursor stays in the search field, so the user can keep typing.
+		switch event.Key() {
+		case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn:
+			hl.tree.InputHandler()(event, func(tview.Primitive) {})
+			return nil
+		}
+		return event
 	})
 
 	// ── Layout ─────────────────────────────────────────────────────────────
@@ -70,6 +86,9 @@ func newHostList(a *App) *hostList {
 
 // rebuild recreates the tree from the current store, applying filterText.
 func (hl *hostList) rebuild() {
+	// Remember the selected host so the cursor survives the rebuild.
+	prevHost, _ := nodeHost(hl.tree.GetCurrentNode())
+
 	root := tview.NewTreeNode("Hosts").SetSelectable(false)
 	hl.tree.SetRoot(root).SetCurrentNode(root)
 
@@ -141,6 +160,40 @@ func (hl *hostList) rebuild() {
 			SetSelectable(false)
 		root.AddChild(hint)
 	}
+
+	hl.selectAfterRebuild(root, prevHost)
+}
+
+// selectAfterRebuild puts the cursor on prev if it is still in the tree,
+// otherwise on the first host (when filtering) or the first selectable node.
+func (hl *hostList) selectAfterRebuild(root *tview.TreeNode, prev *model.Host) {
+	var firstHost, firstAny, match *tview.TreeNode
+	root.Walk(func(node, _ *tview.TreeNode) bool {
+		if node.GetReference() == nil { // root and the "no hosts" hint
+			return true
+		}
+		if firstAny == nil {
+			firstAny = node
+		}
+		if h, ok := nodeHost(node); ok {
+			if firstHost == nil {
+				firstHost = node
+			}
+			if prev != nil && h.ID == prev.ID {
+				match = node
+			}
+		}
+		return true
+	})
+
+	switch {
+	case match != nil:
+		hl.tree.SetCurrentNode(match)
+	case hl.filterText != "" && firstHost != nil:
+		hl.tree.SetCurrentNode(firstHost)
+	case firstAny != nil:
+		hl.tree.SetCurrentNode(firstAny)
+	}
 }
 
 // bindKeys attaches keyboard handlers to the tree widget.
@@ -149,6 +202,11 @@ func (hl *hostList) bindKeys() {
 		// Typing '/' opens the search bar.
 		if event.Key() == tcell.KeyRune && event.Rune() == '/' {
 			hl.showSearch()
+			return nil
+		}
+		if event.Key() == tcell.KeyTab && hl.searching {
+			// Back to the search field to refine the filter.
+			hl.focusSearch()
 			return nil
 		}
 
@@ -223,14 +281,26 @@ func (hl *hostList) bindKeys() {
 // --- search -----------------------------------------------------------------
 
 func (hl *hostList) showSearch() {
-	if hl.searching {
-		return
+	if !hl.searching {
+		hl.searching = true
+		// Insert the search field above the status bar.
+		hl.root.RemoveItem(hl.statusBar)
+		hl.root.AddItem(hl.searchBar, 1, 0, false)
+		hl.root.AddItem(hl.statusBar, 2, 0, false)
 	}
-	hl.searching = true
-	// Replace status bar with search field.
-	hl.root.RemoveItem(hl.statusBar)
-	hl.root.AddItem(hl.searchBar, 1, 0, false)
+	hl.focusSearch()
+}
+
+// focusSearch moves focus to the search field.
+func (hl *hostList) focusSearch() {
+	hl.statusBar.SetText(searchStatusText())
 	hl.app.tApp.SetFocus(hl.searchBar)
+}
+
+// focusResults moves focus to the filtered tree, keeping the filter active.
+func (hl *hostList) focusResults() {
+	hl.statusBar.SetText(statusText())
+	hl.app.tApp.SetFocus(hl.tree)
 }
 
 func (hl *hostList) hideSearch() {
@@ -241,8 +311,8 @@ func (hl *hostList) hideSearch() {
 	hl.filterText = ""
 	hl.searchBar.SetText("")
 	hl.root.RemoveItem(hl.searchBar)
-	hl.root.AddItem(hl.statusBar, 1, 0, false)
 	hl.rebuild()
+	hl.statusBar.SetText(statusText())
 	hl.app.tApp.SetFocus(hl.tree)
 }
 
@@ -312,6 +382,11 @@ func hostMatchesFilter(h *model.Host, lower string) bool {
 		}
 	}
 	return false
+}
+
+func searchStatusText() string {
+	return "[yellow]↑↓[-] Move  [yellow]Enter/Tab[-] Go to results  [yellow]Esc[-] Clear search\n" +
+		"In results: [yellow]Tab[-] Back to search  [yellow]Esc[-] Clear search"
 }
 
 func statusText() string {
